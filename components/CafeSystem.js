@@ -1,7 +1,8 @@
 'use client'
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Card } from '@/components/ui/card';
 import { Coffee, DollarSign, Users } from 'lucide-react';
+import { supabase } from '@/lib/supabaseClient';
 import {
   LineChart,
   Line,
@@ -16,18 +17,48 @@ import {
 } from 'recharts';
 
 const CafeSystem = () => {
+  const [products, setProducts] = useState([]);
   const [currentOrder, setCurrentOrder] = useState([]);
   const [orders, setOrders] = useState([]);
   const [view, setView] = useState('customer');
 
-  // Menú de productos
-  const menu = [
-    { id: 1, name: 'Café Expreso', price: 5.50, category: 'Café' },
-    { id: 2, name: 'Cappuccino', price: 7.50, category: 'Café' },
-    { id: 3, name: 'Latte', price: 8.00, category: 'Café' },
-    { id: 4, name: 'Pan de Queso', price: 4.50, category: 'Comida' },
-    { id: 5, name: 'Pastel de Chocolate', price: 6.50, category: 'Comida' }
-  ];
+  // Cargar productos desde Supabase
+  useEffect(() => {
+    const loadProducts = async () => {
+      const { data, error } = await supabase
+        .from('products')
+        .select('*')
+        .eq('active', true);
+      
+      if (data) setProducts(data);
+    };
+    loadProducts();
+  }, []);
+
+  useEffect(() => {
+    const loadOrders = async () => {
+      const { data, error } = await supabase
+        .from('orders')
+        .select('*')
+        .order('created_at', { ascending: false });
+      
+      if (data) setOrders(data);
+    };
+
+    loadOrders();
+
+    // Suscripción a cambios en tiempo real
+    const channel = supabase
+      .channel('orders')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'orders' }, (payload) => {
+        setOrders(current => [payload.new, ...current]);
+      })
+      .subscribe();
+
+    return () => {
+      channel.unsubscribe();
+    };
+  }, []);
 
   // Vista del Cliente
   const CustomerView = () => (
@@ -35,7 +66,7 @@ const CafeSystem = () => {
       <Card className="mb-4 p-4">
         <h2 className="text-xl font-bold mb-4">Haz tu Pedido</h2>
         <div className="grid grid-cols-2 gap-4">
-          {menu.map((item) => (
+          {products.map((item) => (
             <button
               key={item.id}
               onClick={() => setCurrentOrder([...currentOrder, item])}
